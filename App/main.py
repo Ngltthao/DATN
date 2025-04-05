@@ -79,6 +79,7 @@ class LicensePlateApp:
                 messagebox.showerror("Lỗi", "Không thể mở camera. Vui lòng kiểm tra lại.")
                 self.camera = None
                 return
+            # Bắt đầu hiển thị khung hình từ camera liên tục
             self.show_frame()
         else:
             self.status_label.config(text="Camera đã bật!")
@@ -96,28 +97,60 @@ class LicensePlateApp:
         if self.camera:
             ret, frame = self.camera.read()
             if ret:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                self.image = Image.fromarray(frame)
+                # Chuyển đổi khung hình từ BGR sang RGB
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-                # Cập nhật kích thước ảnh theo khung hình
-                self.image = self.image.resize((self.image_label.winfo_width(), self.image_label.winfo_height()), Image.Resampling.LANCZOS)
+                # Chạy nhận diện biển số xe
+                processed_frame, license_plate_texts = self.plate_recognizer.detect_license_plate_and_text(frame)
 
-                self.photo = ImageTk.PhotoImage(image=self.image)
+                # Hiển thị ảnh đã xử lý với biển số nhận diện được
+                processed_frame_rgb = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
+                processed_image = Image.fromarray(processed_frame_rgb)
+
+                # Resize ảnh để vừa với giao diện
+                processed_image = processed_image.resize((self.image_label.winfo_width(), self.image_label.winfo_height()), Image.Resampling.LANCZOS)
+
+                # Cập nhật ảnh lên giao diện
+                self.photo = ImageTk.PhotoImage(image=processed_image)
                 self.image_label.config(image=self.photo)
                 self.image_label.image = self.photo
-            self.root.after(10, self.show_frame)
+
+                # Hiển thị kết quả nhận diện biển số xe
+                if license_plate_texts:
+                    self.status_label.config(text=f"Biển số nhận diện: {', '.join(license_plate_texts)}")
+                else:
+                    self.status_label.config(text="Không nhận diện được biển số.")
+
+            # Tiếp tục cập nhật khung hình sau 1500ms (1.5 giây)
+            self.root.after(100, self.show_frame)
 
     def capture_image(self):
         if not self.camera:
             self.status_label.config(text="Vui lòng bật camera trước!")
             return
-        self.status_label.config(text="")
+        
+        # Chụp ảnh từ camera
         ret, frame = self.camera.read()
         if ret:
+            # Dừng camera sau khi chụp
+            self.camera.release()
+            self.camera = None
+
+            # Chuyển ảnh chụp thành ảnh PIL để hiển thị
             self.image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             self.photo = ImageTk.PhotoImage(image=self.image)
             self.image_label.config(image=self.photo)
             self.image_label.image = self.photo
+
+            # Chạy nhận diện biển số xe trên hình ảnh đã chụp
+            processed_frame, license_plate_texts = self.plate_recognizer.detect_license_plate_and_text(frame)
+
+            # Hiển thị kết quả nhận diện trên màn hình
+            if license_plate_texts:
+                self.status_label.config(text=f"Biển số nhận diện: {', '.join(license_plate_texts)}")
+            else:
+                self.status_label.config(text="Không nhận diện được biển số.")
+
 
     def record_video(self):
         if not self.camera:
@@ -127,8 +160,22 @@ class LicensePlateApp:
         self.recording = not self.recording
         if self.recording:
             self.status_label.config(text="Bắt đầu quay video...")
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+            self.video_writer = cv2.VideoWriter('output_video.avi', fourcc, 20.0, (640, 480))
         else:
             self.status_label.config(text="Dừng quay video.")
+            self.video_writer.release()
+
+        while self.recording:
+            ret, frame = self.camera.read()
+            if ret:
+                self.video_writer.write(frame)  # Ghi frame vào video
+                cv2.imshow("Recording", frame)
+
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+
 
     def upload_image(self):
         filename = filedialog.askopenfilename(filetypes=[("Image Files", "*.jpg;*.png;*.jpeg")])
@@ -172,7 +219,6 @@ class LicensePlateApp:
             messagebox.showinfo("Thông báo", "Đã lưu ảnh biển số vào detected_license_plate.jpg")
         else:
             messagebox.showinfo("Kết quả nhận diện", "Không nhận diện được biển số xe.")
-
 
 if __name__ == "__main__":
     root = tk.Tk()

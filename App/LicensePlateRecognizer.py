@@ -3,6 +3,7 @@ import easyocr
 import numpy as np
 import re
 import sys
+from ultralytics import YOLO  # Thêm dòng này ở đầu file
 
 # Preprocess functions
 def preprocess(imgOriginal):
@@ -37,23 +38,27 @@ def preprocess(imgOriginal):
     return imgGrayscale, imgThresh
 
 # LicensePlateRecognizer class
+
+
 class LicensePlateRecognizer:
     def __init__(self, languages=['en', 'vi']):
         self.reader = easyocr.Reader(languages)
-        self.plate_cascade = cv2.CascadeClassifier("C:/DATN/App/modeltrain.xml")
-        if self.plate_cascade.empty():
-            print("Lỗi: Không thể tải file CascadeClassifier.")
-        else:
-            print("Mô hình CascadeClassifier đã được tải thành công.")
-
+        self.model = YOLO("runs/detect/lp_yolov8n2/weights/best.pt")  # Đường dẫn mô hình YOLO
+        print("Mô hình YOLO đã được tải thành công.")
 
     def preprocess_image(self, img):
         imgGrayscale, imgThresh = preprocess(img)
         return imgThresh
-
+# lọc giữ liệu như 68H-125.23
     def filter_text(self, text):
-        text = text.upper()
-        text = re.sub(r'[^A-Z0-9]', '', text)  # Loại bỏ ký tự không hợp lệ
+        text = text.upper()  # Chuyển toàn bộ văn bản thành chữ hoa
+        # Loại bỏ các ký tự không phải chữ cái, số, dấu gạch ngang hoặc dấu chấm
+        text = re.sub(r'[^A-Z0-9\-\.]', '', text)
+        
+        # Kiểm tra xem có dấu chấm hay không
+        if '.' in text:
+            # Nếu có dấu chấm, đảm bảo chỉ có một dấu chấm
+            text = re.sub(r'\.(?=.*\.)', '', text)
         return text
 
     def detect_license_plate_and_text(self, frame):
@@ -61,26 +66,33 @@ class LicensePlateRecognizer:
             print("Ảnh không hợp lệ!")
             return frame, []
 
-        # Xử lý ảnh trước khi nhận diện biển số
-        gray = self.preprocess_image(frame)
-
-        # Phát hiện các biển số xe
-        plates = self.plate_cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=7, minSize=(80, 80))
+        # Nhận diện biển số với mô hình đã huấn luyện
+        results = self.model(frame, conf=0.5, verbose=False)
 
         detected_texts = []
-        for (x, y, w, h) in plates:
-            plate_img = frame[y:y + h, x:x + w]  # Cắt ảnh biển số
-            result = self.reader.readtext(plate_img)  # Nhận diện văn bản
+        for result in results:
+            for box in result.boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                plate_img = frame[y1:y2, x1:x2]  # Cắt biển số từ ảnh
 
-            for detection in result:
-                text = self.filter_text(detection[1])  # Lọc văn bản
-                if text:
-                    print("Biển số xe nhận diện được:", text)
-                    detected_texts.append(text)
-                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 3)  # Vẽ hình chữ nhật bao quanh biển số
-                    cv2.putText(frame, text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)  # Hiển thị văn bản biển số
+                # Đọc văn bản từ ảnh biển số
+                result_text = self.reader.readtext(plate_img)
 
-        return frame, detected_texts  # Trả về ảnh đã xử lý và danh sách biển số nhận diện được
+                for detection in result_text:
+                    text = self.filter_text(detection[1])  # Lọc văn bản
+                    if text:  # Nếu có văn bản hợp lệ
+                        print("Biển số xe nhận diện được:", text)
+                        detected_texts.append(text)
+
+                        # Vẽ hình chữ nhật quanh biển số và hiển thị văn bản nhận diện
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)
+                        cv2.putText(frame, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+        # Nếu không có biển số nào được nhận diện, thông báo cho người dùng
+        if not detected_texts:
+            print("Không nhận diện được biển số xe.")
+
+        return frame, detected_texts
 
     def process_image(self, image_path):
         img = cv2.imread(image_path)
@@ -175,16 +187,3 @@ class LicensePlateRecognizer:
 
         cv2.destroyAllWindows()
 
-# Kiểm tra kết quả với một ảnh mẫu
-if __name__ == "__main__":
-    recognizer = LicensePlateRecognizer()
-
-    # Nhận diện biển số từ ảnh
-    detected_texts = recognizer.process_image("input_license_plate_image.jpg")
-    print("Biển số nhận diện:", detected_texts)
-
-    # Nhận diện trực tiếp từ camera
-    # recognizer.show_live_detection()
-
-    # Tạo dữ liệu huấn luyện
-    # recognizer.generate_training_data()
