@@ -67,6 +67,18 @@ class LicensePlateApp:
         self.zoom_slider = Scale(self.control_frame, from_=1, to=3, orient=HORIZONTAL, resolution=0.01, label="Phóng To", command=self.update_zoom, length=300)
         self.zoom_slider.set(1)  # Thiết lập mức độ phóng to ban đầu
         self.zoom_slider.pack(pady=10)
+
+        # Khung chứa nút làm nét/ đặt lại
+        button_frame = tk.Frame(self.root)
+        button_frame.grid(row=2, column=0, pady=10)  # Đặt row và column theo yêu cầu của bạn
+
+        btn_sharpen = tk.Button(button_frame, text="Làm nét ảnh", command=self.sharpen_image)
+        btn_sharpen.pack(side=tk.LEFT, padx=5)
+
+        btn_reset = tk.Button(button_frame, text="Đặt lại ảnh", command=self.reset_image)
+        btn_reset.pack(side=tk.LEFT, padx=5)
+
+        # Nút chứa nhận diện biển số 
         self.recognize_button = self.create_button("Nhận diện Biển Số", self.recognize_license_plate, "#E74C3C")
 
         self.camera = None
@@ -127,7 +139,6 @@ class LicensePlateApp:
             self.photo = ImageTk.PhotoImage(image=resized_image)
             self.image_label.config(image=self.photo)
             self.image_label.image = self.photo
-            self.displayed_image = resized_image  # Lưu ảnh đã hiển thị để dùng nhận diện
 
     def create_button(self, text, command, color):
         button = tk.Button(self.control_frame, text=text, command=command, font=("Arial", 12), bg=color, fg="white", width=20, height=2, bd=2, relief="groove")
@@ -239,8 +250,6 @@ class LicensePlateApp:
                 self.video_writer.write(frame)
                 # Không nên dùng cv2.imshow trong app Tkinter. Có thể bỏ dòng này.
 
-
-
     def upload_image(self):
         filename = filedialog.askopenfilename(filetypes=[("Image Files", "*.jpg;*.png;*.jpeg")])
         if filename:
@@ -248,10 +257,79 @@ class LicensePlateApp:
 
             # Cập nhật kích thước ảnh theo khung hình
             self.image = self.image.resize((self.image_label.winfo_width(), self.image_label.winfo_height()), Image.Resampling.LANCZOS)
+            
+            # Lưu ảnh gốc
+            self.original_image = self.image.copy()
 
+            # Hiển thị ảnh
             self.photo = ImageTk.PhotoImage(image=self.image)
             self.image_label.config(image=self.photo)
             self.image_label.image = self.photo
+
+            # Lưu ảnh gốc trước khi thực hiện các thao tác khác
+            self.original_image = self.image.copy()
+
+    def sharpen_image(self): 
+        if not self.image:
+            messagebox.showerror("Lỗi", "Vui lòng chọn hoặc chụp ảnh trước!")
+            return
+
+        # Lưu ảnh gốc trước khi làm nét (nếu chưa lưu)
+        if not hasattr(self, "original_image") or self.original_image is None:
+            self.original_image = self.image.copy()
+
+        # Chuyển đổi ảnh PIL sang OpenCV
+        img_cv = cv2.cvtColor(np.array(self.image), cv2.COLOR_RGB2BGR)
+
+        # Kernel làm nét
+        kernel = np.array([[0, -1, 0],
+                            [-1, 5,-1],
+                            [0, -1, 0]])
+
+        # Áp dụng kernel làm nét
+        sharpened = cv2.filter2D(img_cv, -1, kernel)
+
+        # Điều chỉnh độ tương phản bằng cách sử dụng hàm convertTo của OpenCV
+        # Tham số alpha là hệ số độ tương phản (1.0 giữ nguyên, >1.0 tăng tương phản)
+        alpha = 1.5  # Điều chỉnh độ tương phản (1.0 là không thay đổi)
+        contrast_img = cv2.convertScaleAbs(sharpened, alpha=alpha, beta=0)
+
+        # Chuyển lại sang ảnh PIL
+        img_rgb = cv2.cvtColor(contrast_img, cv2.COLOR_BGR2RGB)
+        self.image = Image.fromarray(img_rgb)
+
+        # Reset zoom và vị trí để hiển thị toàn ảnh làm nét
+        self.zoom_slider.set(1)
+        self.zoom_factor = 1
+        self.offset_x = 0
+        self.offset_y = 0
+        self.image_position = (0, 0)
+
+        # Hiển thị ảnh sau khi làm nét và tăng cường độ tương phản
+        self.display_image()
+
+        messagebox.showinfo("Thông báo", "Đã làm nét và tăng cường độ tương phản ảnh.")
+
+
+    def reset_image(self):
+        if not hasattr(self, "original_image") or self.original_image is None:
+            messagebox.showerror("Lỗi", "Chưa có ảnh gốc để khôi phục.")
+            return
+
+        # Đặt lại ảnh gốc
+        self.image = self.original_image.copy()
+
+        # Reset zoom và vị trí
+        self.zoom_slider.set(1)
+        self.zoom_factor = 1
+        self.offset_x = 0
+        self.offset_y = 0
+        self.image_position = (0, 0)
+
+        # Hiển thị ảnh gốc
+        self.display_image()
+
+        messagebox.showinfo("Thông báo", "Đã đặt lại ảnh gốc.")
 
     def recognize_license_plate(self):
         if not self.image:
@@ -283,7 +361,6 @@ class LicensePlateApp:
         if license_plate_texts:
             messagebox.showinfo("Kết quả nhận diện", f"Biển số xe: {', '.join(license_plate_texts)}")
             cv2.imwrite("detected_license_plate.jpg", processed_frame)
-            messagebox.showinfo("Thông báo", "Đã lưu ảnh biển số vào detected_license_plate.jpg")
         else:
             messagebox.showinfo("Kết quả nhận diện", "Không nhận diện được biển số xe.")
 
