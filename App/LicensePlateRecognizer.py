@@ -1,4 +1,4 @@
-import cv2
+import cv2, json
 import easyocr
 import numpy as np
 import re
@@ -39,17 +39,38 @@ def preprocess(imgOriginal):
 
 # LicensePlateRecognizer class
 
-
 class LicensePlateRecognizer:
     def __init__(self, languages=['en', 'vi']):
-        self.reader = easyocr.Reader(languages)
-        self.model = YOLO("runs/detect/lp_yolov8n2/weights/best.pt")  # Đường dẫn mô hình YOLO
+        self.reader = easyocr.Reader(languages)  # Khởi tạo EasyOCR cho nhận diện văn bản
+        self.model = YOLO("runs/detect/lp_yolov8n2/weights/best.pt")  # Mô hình YOLO
         print("Mô hình YOLO đã được tải thành công.")
+        
+        # Load dữ liệu huấn luyện từ JSON
+        self.load_training_data("C:/DATN/App/kytu/training_data.json")
+
+    def load_training_data(self, json_path):
+        try:
+            with open(json_path, 'r') as f:
+                data = json.load(f)
+
+                images = [item["image"] for item in data]
+                labels = [ord(item["label"]) for item in data]  # Đổi label thành mã ASCII
+
+                self.flattened_images = np.array(images, np.float32)
+                self.classifications = np.array(labels, np.float32).reshape(-1, 1)
+
+                print("✅ Đã tải dữ liệu huấn luyện từ JSON.")
+                print("📦 Số lượng mẫu huấn luyện:", len(labels))
+        except Exception as e:
+            print("❌ Lỗi khi tải dữ liệu JSON:", e)
+            self.classifications = None
+            self.flattened_images = None
 
     def preprocess_image(self, img):
         imgGrayscale, imgThresh = preprocess(img)
         return imgThresh
-# lọc giữ liệu như 68H-125.23
+
+    # Lọc và chỉ giữ lại ký tự hợp lệ như 68H-125.23
     def filter_text(self, text):
         text = text.upper()  # Chuyển toàn bộ văn bản thành chữ hoa
         # Loại bỏ các ký tự không phải chữ cái, số, dấu gạch ngang hoặc dấu chấm
@@ -66,7 +87,7 @@ class LicensePlateRecognizer:
             print("Ảnh không hợp lệ!")
             return frame, []
 
-        # Nhận diện biển số với mô hình đã huấn luyện
+        # Nhận diện biển số với mô hình YOLO
         results = self.model(frame, conf=0.5, verbose=False)
 
         detected_texts = []
@@ -132,58 +153,24 @@ class LicensePlateRecognizer:
         cap.release()
         cv2.destroyAllWindows()
 
-    def generate_training_data(self):
-        print("Bắt đầu tạo dữ liệu huấn luyện...")
-        self.generate_data()  # Gọi hàm để tạo dữ liệu huấn luyện
-        print("Hoàn tất việc tạo dữ liệu huấn luyện!")
+# Giải thích về cách hoạt động:
+# Load dữ liệu huấn luyện từ JSON:
 
-    def generate_data(self):
-        MIN_CONTOUR_AREA = 40
-        RESIZED_IMAGE_WIDTH = 20
-        RESIZED_IMAGE_HEIGHT = 30
-        imgTrainingNumbers = cv2.imread("training_chars.png")
-        
-        imgGray = cv2.cvtColor(imgTrainingNumbers, cv2.COLOR_BGR2GRAY)
-        imgBlurred = cv2.GaussianBlur(imgGray, (5, 5), 0)
-        imgThresh = cv2.adaptiveThreshold(imgBlurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
-        
-        imgThreshCopy = imgThresh.copy()
+# Dữ liệu huấn luyện (gồm ảnh và nhãn ký tự) được lưu trong training_data.json. Các ảnh được tải và chuyển thành mảng numpy để huấn luyện mô hình.
 
-        npaContours, hierarchy = cv2.findContours(imgThreshCopy, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+# Nhận diện biển số:
 
-        npaFlattenedImages = np.empty((0, RESIZED_IMAGE_WIDTH * RESIZED_IMAGE_HEIGHT))
-        intClassifications = []
-        intValidChars = [ord('0'), ord('1'), ord('2'), ord('3'), ord('4'), ord('5'), ord('6'), ord('7'), ord('8'), ord('9'),
-                         ord('A'), ord('B'), ord('C'), ord('D'), ord('E'), ord('F'), ord('G'), ord('H'), ord('I'), ord('J'),
-                         ord('K'), ord('L'), ord('M'), ord('N'), ord('O'), ord('P'), ord('Q'), ord('R'), ord('S'), ord('T'),
-                         ord('U'), ord('V'), ord('W'), ord('X'), ord('Y'), ord('Z')]
+# Dùng YOLO để phát hiện vùng biển số.
 
-        for npaContour in npaContours:
-            if cv2.contourArea(npaContour) > MIN_CONTOUR_AREA:
-                [intX, intY, intW, intH] = cv2.boundingRect(npaContour)
-                cv2.rectangle(imgTrainingNumbers, (intX, intY), (intX + intW, intY + intH), (0, 0, 255), 2)
+# Dùng EasyOCR để nhận diện văn bản trong biển số.
 
-                imgROI = imgThresh[intY:intY + intH, intX:intX + intW]
-                imgROIResized = cv2.resize(imgROI, (RESIZED_IMAGE_WIDTH, RESIZED_IMAGE_HEIGHT))
+# Hiển thị kết quả:
 
-                cv2.imshow("imgROI", imgROI)
-                cv2.imshow("imgROIResized", imgROIResized)
-                cv2.imshow("training_numbers.png", imgTrainingNumbers)
+# Khi phát hiện được biển số, kết quả sẽ được vẽ lên ảnh và hiển thị cho người dùng.
 
-                intChar = cv2.waitKey(0)
+# Sử dụng cả YOLO và JSON:
+# YOLO phát hiện vị trí biển số.
 
-                if intChar == 27:
-                    sys.exit()
-                elif intChar in intValidChars:
-                    intClassifications.append(intChar)
-                    npaFlattenedImage = imgROIResized.reshape((1, RESIZED_IMAGE_WIDTH * RESIZED_IMAGE_HEIGHT))
-                    npaFlattenedImages = np.append(npaFlattenedImages, npaFlattenedImage, 0)
+# EasyOCR nhận diện văn bản biển số.
 
-        fltClassifications = np.array(intClassifications, np.float32)
-        npaClassifications = fltClassifications.reshape((fltClassifications.size, 1))
-
-        np.savetxt("classifications.txt", npaClassifications)
-        np.savetxt("flattened_images.txt", npaFlattenedImages)
-
-        cv2.destroyAllWindows()
-
+# Dữ liệu huấn luyện từ JSON có thể giúp cải thiện khả năng nhận diện khi cần phân loại các ký tự cụ thể từ dữ liệu huấn luyện.

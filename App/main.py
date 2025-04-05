@@ -39,7 +39,6 @@ class LicensePlateApp:
 
         self.image_label = tk.Label(self.image_frame, bg="#95A5A6", bd=2, relief="sunken")
         self.image_label.grid(row=0, column=0, sticky="nsew")
-
         # Khung điều khiển
         self.control_frame = tk.Frame(root, bg="#ECF0F1")
         self.control_frame.grid(row=1, column=1, padx=20, pady=20, sticky="ns")
@@ -346,7 +345,7 @@ class LicensePlateApp:
         else:
             open_cv_image = cv2.cvtColor(np.array(self.image), cv2.COLOR_RGB2BGR)
 
-        # Gọi hàm nhận diện biển số xe
+        # Gọi hàm nhận diện biển số xe từ LicensePlateRecognizer
         processed_frame, license_plate_texts = self.plate_recognizer.detect_license_plate_and_text(open_cv_image)
 
         # Hiển thị ảnh đã xử lý
@@ -363,7 +362,6 @@ class LicensePlateApp:
             cv2.imwrite("detected_license_plate.jpg", processed_frame)
         else:
             messagebox.showinfo("Kết quả nhận diện", "Không nhận diện được biển số xe.")
-
 
 
 if __name__ == "__main__":
