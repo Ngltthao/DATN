@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import ttk
 from tkinter import filedialog, messagebox, Canvas
 import cv2
 import numpy as np
@@ -67,15 +68,21 @@ class LicensePlateApp:
         self.zoom_slider.set(1)  # Thiết lập mức độ phóng to ban đầu
         self.zoom_slider.pack(pady=10)
 
-        # Khung chứa nút làm nét/ đặt lại
+       # Khung chứa nút làm nét/đặt lại
         button_frame = tk.Frame(self.root)
         button_frame.grid(row=2, column=0, pady=10)  # Đặt row và column theo yêu cầu của bạn
 
-        btn_sharpen = tk.Button(button_frame, text="Làm nét ảnh", command=self.sharpen_image)
-        btn_sharpen.pack(side=tk.LEFT, padx=5)
+        # Tạo style cho button với thiết kế hiện đại và đơn giản
+        self.style = ttk.Style()
+        self.style.configure('TButton',background='#007BFF',foreground='black', font=('Arial', 10, 'normal'),padding=5,relief='flat',anchor='center')  
 
-        btn_reset = tk.Button(button_frame, text="Đặt lại ảnh", command=self.reset_image)
-        btn_reset.pack(side=tk.LEFT, padx=5)
+        # Tạo button "Làm nét ảnh" với style
+        btn_sharpen = ttk.Button(button_frame, text="Làm nét ảnh", command=self.sharpen_image, style='TButton')
+        btn_sharpen.pack(side=tk.LEFT, padx=10)
+
+        # Tạo button "Đặt lại ảnh" với style
+        btn_reset = ttk.Button(button_frame, text="Đặt lại ảnh", command=self.reset_image, style='TButton')
+        btn_reset.pack(side=tk.LEFT, padx=10)
 
         # Nút chứa nhận diện biển số 
         self.recognize_button = self.create_button("Nhận diện Biển Số", self.recognize_license_plate, "#E74C3C")
