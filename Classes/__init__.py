@@ -1,0 +1,3 @@
+import Classes.Config
+from Classes.LicensePlateApp import LicensePlateApp
+from Classes.Detect_char import LicensePlateRecognizer
